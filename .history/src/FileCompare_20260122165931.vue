@@ -176,18 +176,6 @@ export default {
         const rightRows = rightSheet ? rightSheet.rows : [];
         const rowAlignment = this.alignRowsWithLCS(leftRows, rightRows);
 
-        // 全局分析列的对应关系（基于第一行或表头行）
-        let globalColMapping = null;
-        const firstEqualRow = rowAlignment.find(
-          (item) => item.type === "equal"
-        );
-        if (firstEqualRow) {
-          globalColMapping = this.getColumnMapping(
-            firstEqualRow.leftRow,
-            firstEqualRow.rightRow
-          );
-        }
-
         rowAlignment.forEach((item) => {
           const { type, leftRow, rightRow } = item;
 
@@ -208,9 +196,8 @@ export default {
           }
 
           if (type === "equal") {
-            // 使用全局列对齐（如果有的话），否则使用当前行的列对齐
-            const colMapping =
-              globalColMapping || this.getColumnMapping(leftRow, rightRow);
+            // 使用列对齐算法找到列的对应关系
+            const colMapping = this.getColumnMapping(leftRow, rightRow);
 
             // 右侧显示原始内容，但根据映射关系标记颜色
             rightHtml += "<tr>";
@@ -241,10 +228,15 @@ export default {
                   )}</td>`;
                 }
               } else {
-                // 右侧新增的列
-                rightHtml += `<td style="background-color: #c8e6c9 !important;">${this.escapeHtml(
-                  rightCell.value
-                )}</td>`;
+                // 右侧新增的列，只有非空单元格才标记为绿色
+                const rightVal = String(rightCell.value || "").trim();
+                if (rightVal) {
+                  rightHtml += `<td style="background-color: #c8e6c9 !important;">${this.escapeHtml(
+                    rightCell.value
+                  )}</td>`;
+                } else {
+                  rightHtml += `<td>${this.escapeHtml(rightCell.value)}</td>`;
+                }
               }
             });
             rightHtml += "</tr>";

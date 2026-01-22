@@ -208,9 +208,8 @@ export default {
           }
 
           if (type === "equal") {
-            // 使用全局列对齐（如果有的话），否则使用当前行的列对齐
-            const colMapping =
-              globalColMapping || this.getColumnMapping(leftRow, rightRow);
+            // 使用列对齐算法找到列的对应关系
+            const colMapping = this.getColumnMapping(leftRow, rightRow);
 
             // 右侧显示原始内容，但根据映射关系标记颜色
             rightHtml += "<tr>";

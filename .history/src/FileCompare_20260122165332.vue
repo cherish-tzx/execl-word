@@ -176,18 +176,6 @@ export default {
         const rightRows = rightSheet ? rightSheet.rows : [];
         const rowAlignment = this.alignRowsWithLCS(leftRows, rightRows);
 
-        // 全局分析列的对应关系（基于第一行或表头行）
-        let globalColMapping = null;
-        const firstEqualRow = rowAlignment.find(
-          (item) => item.type === "equal"
-        );
-        if (firstEqualRow) {
-          globalColMapping = this.getColumnMapping(
-            firstEqualRow.leftRow,
-            firstEqualRow.rightRow
-          );
-        }
-
         rowAlignment.forEach((item) => {
           const { type, leftRow, rightRow } = item;
 
@@ -208,9 +196,8 @@ export default {
           }
 
           if (type === "equal") {
-            // 使用全局列对齐（如果有的话），否则使用当前行的列对齐
-            const colMapping =
-              globalColMapping || this.getColumnMapping(leftRow, rightRow);
+            // 使用列对齐算法找到列的对应关系
+            const colMapping = this.getColumnMapping(leftRow, rightRow);
 
             // 右侧显示原始内容，但根据映射关系标记颜色
             rightHtml += "<tr>";
@@ -391,7 +378,6 @@ export default {
       }
 
       // 第二步：对未匹配的列，按位置距离最近原则进行兜底匹配
-      // 但只匹配都为空的列，避免把空列和有内容的列错误匹配
       const unmatchedLeft = [];
       const unmatchedRight = [];
 
@@ -407,51 +393,16 @@ export default {
         }
       }
 
-      // 第一轮：只匹配都为空的列
+      // 使用贪心算法：每次为左侧未匹配的列找到距离最近的右侧未匹配列
       const usedRight = new Set();
       for (const leftIdx of unmatchedLeft) {
-        const leftVal = String(leftRow[leftIdx].value || "").trim();
         let bestRightIdx = -1;
         let minDistance = Infinity;
 
         for (const rightIdx of unmatchedRight) {
           if (!usedRight.has(rightIdx)) {
-            const rightVal = String(rightRow[rightIdx].value || "").trim();
-            // 只有当两列都为空时才考虑匹配
-            if (!leftVal && !rightVal) {
-              const distance = Math.abs(leftIdx - rightIdx);
-              if (distance < minDistance) {
-                minDistance = distance;
-                bestRightIdx = rightIdx;
-              }
-            }
-          }
-        }
-
-        if (bestRightIdx !== -1) {
-          leftToRight[leftIdx] = bestRightIdx;
-          rightToLeft[bestRightIdx] = leftIdx;
-          usedRight.add(bestRightIdx);
-        }
-      }
-
-      // 第二轮：对于位置非常接近的列（距离<=2），即使内容不同也匹配为修改
-      const stillUnmatchedLeft = unmatchedLeft.filter(
-        (idx) => leftToRight[idx] === undefined
-      );
-      const stillUnmatchedRight = unmatchedRight.filter(
-        (idx) => !usedRight.has(idx)
-      );
-
-      for (const leftIdx of stillUnmatchedLeft) {
-        let bestRightIdx = -1;
-        let minDistance = Infinity;
-
-        for (const rightIdx of stillUnmatchedRight) {
-          if (!usedRight.has(rightIdx)) {
             const distance = Math.abs(leftIdx - rightIdx);
-            // 只匹配位置非常接近的列（距离<=2）
-            if (distance <= 2 && distance < minDistance) {
+            if (distance < minDistance) {
               minDistance = distance;
               bestRightIdx = rightIdx;
             }

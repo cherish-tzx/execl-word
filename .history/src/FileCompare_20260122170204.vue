@@ -176,18 +176,6 @@ export default {
         const rightRows = rightSheet ? rightSheet.rows : [];
         const rowAlignment = this.alignRowsWithLCS(leftRows, rightRows);
 
-        // 全局分析列的对应关系（基于第一行或表头行）
-        let globalColMapping = null;
-        const firstEqualRow = rowAlignment.find(
-          (item) => item.type === "equal"
-        );
-        if (firstEqualRow) {
-          globalColMapping = this.getColumnMapping(
-            firstEqualRow.leftRow,
-            firstEqualRow.rightRow
-          );
-        }
-
         rowAlignment.forEach((item) => {
           const { type, leftRow, rightRow } = item;
 
@@ -208,9 +196,8 @@ export default {
           }
 
           if (type === "equal") {
-            // 使用全局列对齐（如果有的话），否则使用当前行的列对齐
-            const colMapping =
-              globalColMapping || this.getColumnMapping(leftRow, rightRow);
+            // 使用列对齐算法找到列的对应关系
+            const colMapping = this.getColumnMapping(leftRow, rightRow);
 
             // 右侧显示原始内容，但根据映射关系标记颜色
             rightHtml += "<tr>";
@@ -435,7 +422,7 @@ export default {
         }
       }
 
-      // 第二轮：对于位置非常接近的列（距离<=2），即使内容不同也匹配为修改
+      // 第二轮：对于位置非常接近的列（距离<=3），即使内容不同也匹配为修改
       const stillUnmatchedLeft = unmatchedLeft.filter(
         (idx) => leftToRight[idx] === undefined
       );
@@ -450,8 +437,8 @@ export default {
         for (const rightIdx of stillUnmatchedRight) {
           if (!usedRight.has(rightIdx)) {
             const distance = Math.abs(leftIdx - rightIdx);
-            // 只匹配位置非常接近的列（距离<=2）
-            if (distance <= 2 && distance < minDistance) {
+            // 只匹配位置非常接近的列（距离<=3）
+            if (distance <= 3 && distance < minDistance) {
               minDistance = distance;
               bestRightIdx = rightIdx;
             }

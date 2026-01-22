@@ -176,18 +176,6 @@ export default {
         const rightRows = rightSheet ? rightSheet.rows : [];
         const rowAlignment = this.alignRowsWithLCS(leftRows, rightRows);
 
-        // 全局分析列的对应关系（基于第一行或表头行）
-        let globalColMapping = null;
-        const firstEqualRow = rowAlignment.find(
-          (item) => item.type === "equal"
-        );
-        if (firstEqualRow) {
-          globalColMapping = this.getColumnMapping(
-            firstEqualRow.leftRow,
-            firstEqualRow.rightRow
-          );
-        }
-
         rowAlignment.forEach((item) => {
           const { type, leftRow, rightRow } = item;
 
@@ -208,22 +196,30 @@ export default {
           }
 
           if (type === "equal") {
-            // 使用全局列对齐（如果有的话），否则使用当前行的列对齐
-            const colMapping =
-              globalColMapping || this.getColumnMapping(leftRow, rightRow);
+            const colAlignment = this.alignColumnsWithLCS(leftRow, rightRow);
 
-            // 右侧显示原始内容，但根据映射关系标记颜色
+            // 重新构建左侧行
+            leftHtml = leftHtml.slice(0, -5); // 移除 </tr>
+            colAlignment.forEach((colItem) => {
+              if (colItem.leftCell) {
+                leftHtml += `<td>${this.escapeHtml(
+                  colItem.leftCell.value
+                )}</td>`;
+              } else {
+                leftHtml += '<td style="background-color: #f5f5f5;"></td>';
+              }
+            });
+            leftHtml += "</tr>";
+
+            // 构建右侧行
             rightHtml += "<tr>";
-            rightRow.forEach((rightCell, rightIdx) => {
+            colAlignment.forEach((colItem) => {
+              const { type: colType, leftCell, rightCell } = colItem;
               totalCells++;
-              const leftIdx = colMapping.rightToLeft[rightIdx];
 
-              if (leftIdx !== undefined) {
-                // 右侧列在左侧有对应
-                const leftCell = leftRow[leftIdx];
+              if (colType === "equal") {
                 const leftVal = String(leftCell.value || "").trim();
                 const rightVal = String(rightCell.value || "").trim();
-
                 if (leftVal === rightVal) {
                   matchedCells++;
                   rightHtml += `<td>${this.escapeHtml(rightCell.value)}</td>`;
@@ -240,11 +236,12 @@ export default {
                     rightCell.value
                   )}</td>`;
                 }
-              } else {
-                // 右侧新增的列
+              } else if (colType === "insert") {
                 rightHtml += `<td style="background-color: #c8e6c9 !important;">${this.escapeHtml(
                   rightCell.value
                 )}</td>`;
+              } else if (colType === "delete") {
+                rightHtml += `<td style="background-color: #ffcdd2 !important;"></td>`;
               }
             });
             rightHtml += "</tr>";
@@ -336,136 +333,6 @@ export default {
         }
       }
       return alignment;
-    },
-
-    getColumnMapping(leftRow, rightRow) {
-      const m = leftRow.length;
-      const n = rightRow.length;
-      const leftToRight = {};
-      const rightToLeft = {};
-
-      // 第一步：使用LCS找到非空值的强匹配
-      const dp = Array(m + 1)
-        .fill(null)
-        .map(() => Array(n + 1).fill(0));
-
-      for (let i = 1; i <= m; i++) {
-        for (let j = 1; j <= n; j++) {
-          const leftVal = String(leftRow[i - 1].value || "").trim();
-          const rightVal = String(rightRow[j - 1].value || "").trim();
-
-          // 只有当两个值都非空且相等时才认为是强匹配
-          if (leftVal && rightVal && leftVal === rightVal) {
-            // 位置越接近，权重越高
-            const positionBonus = 1 - (Math.abs(i - j) / Math.max(m, n)) * 0.3;
-            dp[i][j] = dp[i - 1][j - 1] + 1 + positionBonus;
-          } else {
-            dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
-          }
-        }
-      }
-
-      // 回溯找到强匹配的映射关系
-      let i = m,
-        j = n;
-
-      while (i > 0 && j > 0) {
-        const leftVal = String(leftRow[i - 1].value || "").trim();
-        const rightVal = String(rightRow[j - 1].value || "").trim();
-
-        if (
-          leftVal &&
-          rightVal &&
-          leftVal === rightVal &&
-          dp[i][j] > Math.max(dp[i - 1][j], dp[i][j - 1])
-        ) {
-          leftToRight[i - 1] = j - 1;
-          rightToLeft[j - 1] = i - 1;
-          i--;
-          j--;
-        } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
-          j--;
-        } else {
-          i--;
-        }
-      }
-
-      // 第二步：对未匹配的列，按位置距离最近原则进行兜底匹配
-      // 但只匹配都为空的列，避免把空列和有内容的列错误匹配
-      const unmatchedLeft = [];
-      const unmatchedRight = [];
-
-      for (let i = 0; i < m; i++) {
-        if (leftToRight[i] === undefined) {
-          unmatchedLeft.push(i);
-        }
-      }
-
-      for (let j = 0; j < n; j++) {
-        if (rightToLeft[j] === undefined) {
-          unmatchedRight.push(j);
-        }
-      }
-
-      // 第一轮：只匹配都为空的列
-      const usedRight = new Set();
-      for (const leftIdx of unmatchedLeft) {
-        const leftVal = String(leftRow[leftIdx].value || "").trim();
-        let bestRightIdx = -1;
-        let minDistance = Infinity;
-
-        for (const rightIdx of unmatchedRight) {
-          if (!usedRight.has(rightIdx)) {
-            const rightVal = String(rightRow[rightIdx].value || "").trim();
-            // 只有当两列都为空时才考虑匹配
-            if (!leftVal && !rightVal) {
-              const distance = Math.abs(leftIdx - rightIdx);
-              if (distance < minDistance) {
-                minDistance = distance;
-                bestRightIdx = rightIdx;
-              }
-            }
-          }
-        }
-
-        if (bestRightIdx !== -1) {
-          leftToRight[leftIdx] = bestRightIdx;
-          rightToLeft[bestRightIdx] = leftIdx;
-          usedRight.add(bestRightIdx);
-        }
-      }
-
-      // 第二轮：对于位置非常接近的列（距离<=2），即使内容不同也匹配为修改
-      const stillUnmatchedLeft = unmatchedLeft.filter(
-        (idx) => leftToRight[idx] === undefined
-      );
-      const stillUnmatchedRight = unmatchedRight.filter(
-        (idx) => !usedRight.has(idx)
-      );
-
-      for (const leftIdx of stillUnmatchedLeft) {
-        let bestRightIdx = -1;
-        let minDistance = Infinity;
-
-        for (const rightIdx of stillUnmatchedRight) {
-          if (!usedRight.has(rightIdx)) {
-            const distance = Math.abs(leftIdx - rightIdx);
-            // 只匹配位置非常接近的列（距离<=2）
-            if (distance <= 2 && distance < minDistance) {
-              minDistance = distance;
-              bestRightIdx = rightIdx;
-            }
-          }
-        }
-
-        if (bestRightIdx !== -1) {
-          leftToRight[leftIdx] = bestRightIdx;
-          rightToLeft[bestRightIdx] = leftIdx;
-          usedRight.add(bestRightIdx);
-        }
-      }
-
-      return { leftToRight, rightToLeft };
     },
 
     alignColumnsWithLCS(leftRow, rightRow) {
